@@ -1,0 +1,54 @@
+name: Launchicken iOS Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      screens:
+        description: "JSON array of screens to capture, sent by Launchicken"
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  ios_snapshot:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect Launchicken screenshot plan
+        run: |
+          if [ -f launchicken/screenshots.yml ]; then
+            echo "Launchicken screenshot plan found."
+            sed -n '1,180p' launchicken/screenshots.yml
+          else
+            echo "No launchicken/screenshots.yml found. Launchicken will use default app launch behavior."
+          fi
+      - name: Export Launchicken plan path
+        run: echo "LAUNCHICKEN_SCREENSHOT_PLAN=launchicken/screenshots.yml" >> "$GITHUB_ENV"
+      - uses: ruby/setup-ruby@v1
+        if: ${{ hashFiles('Gemfile') != '' }}
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+      - name: Install dependencies
+        if: ${{ hashFiles('Gemfile') != '' }}
+        run: |
+          bundle install
+      - name: Run fastlane snapshot
+        env:
+          LAUNCHICKEN_SCREENS: ${{ inputs.screens }}
+        run: |
+          if [ -f Gemfile ] && [ -d fastlane ]; then
+            bundle exec fastlane ios screenshots
+          else
+            mkdir -p fastlane/screenshots
+            {
+              echo "Launchicken Sprint 2 placeholder artifact."
+              echo "Add fastlane snapshot configuration to generate real iOS screenshots."
+            } > fastlane/screenshots/launchicken-placeholder.txt
+          fi
+      - name: Upload screenshots
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: launchicken-ios-screenshots-${{ github.run_id }}
+          path: fastlane/screenshots
