@@ -1,0 +1,176 @@
+# Launchicken managed Fastfile (scaffold v5).
+# Launchicken keeps this file up to date automatically. Remove this header line to opt out.
+require "json"
+require "shellwords"
+require "yaml"
+
+def launchicken_repo_dir
+  File.expand_path("..", __dir__)
+end
+
+def launchicken_plan
+  path = ENV["LAUNCHICKEN_SCREENSHOT_PLAN"].to_s
+  path = "launchicken/screenshots.yml" if path.empty?
+  path = File.join(launchicken_repo_dir, path) unless File.exist?(path)
+  return {} unless File.exist?(path)
+  YAML.safe_load(File.read(path)) || {}
+rescue StandardError => error
+  UI.important("Launchicken could not parse the screenshot plan: #{error.message}")
+  {}
+end
+
+def launchicken_screen_list(raw_screens)
+  screens = []
+  Array(raw_screens).each do |screen|
+    next unless screen.is_a?(Hash)
+    name = screen["name"].to_s.strip
+    next if name.empty?
+    args = Array(screen["launch_arguments"]).map(&:to_s).reject(&:empty?)
+    args = ["--launchicken-screen=#{name}"] if args.empty?
+    screens << { name: name, args: args }
+  end
+  screens
+end
+
+def launchicken_env_screens
+  raw = ENV["LAUNCHICKEN_SCREENS"].to_s.strip
+  return [] if raw.empty?
+  launchicken_screen_list(JSON.parse(raw))
+rescue JSON::ParserError => error
+  UI.important("Launchicken could not parse LAUNCHICKEN_SCREENS: #{error.message}")
+  []
+end
+
+def launchicken_ios_screens(plan)
+  # The Launchicken dashboard sends the screen list with the dispatch; it wins over
+  # whatever launchicken/screenshots.yml contains so repo-file edits can never mask it.
+  screens = launchicken_env_screens
+  return screens unless screens.empty?
+  screens = launchicken_screen_list(plan.dig("ios", "screens"))
+  return screens unless screens.empty?
+  [
+    { name: "home", args: ["--launchicken-screen=home"] },
+    { name: "settings", args: ["--launchicken-screen=settings"] },
+  ]
+end
+
+def launchicken_first_available_iphone
+  devices = sh("xcrun simctl list devices available")
+  line = devices.lines.find { |candidate| candidate.include?("iPhone") && candidate.include?("(") }
+  return nil unless line
+  line.split("(").first.strip
+end
+
+def launchicken_simulator_exists?(device_name)
+  sh("xcrun simctl list devices available | grep -m 1 #{device_name.shellescape} || true").strip.length > 0
+end
+
+def launchicken_booted?(device_name)
+  sh("xcrun simctl list devices | grep #{device_name.shellescape} | grep Booted || true").strip.length > 0
+end
+
+def launchicken_device_name(plan)
+  candidates = [ENV["LAUNCHICKEN_IOS_DEVICE"]]
+  candidates += Array(plan.dig("ios", "devices"))
+  candidates << "iPhone 16 Pro"
+  candidates.map(&:to_s).map(&:strip).reject(&:empty?).each do |name|
+    return name if launchicken_simulator_exists?(name)
+  end
+  device_name = launchicken_first_available_iphone
+  UI.user_error!("No available iPhone simulator was found.") if device_name.to_s.empty?
+  device_name
+end
+
+def launchicken_project_path
+  # Fastfile Ruby code runs with the fastlane/ directory as CWD, so search from the repo root.
+  path = Dir[File.join(launchicken_repo_dir, "*.xcodeproj")].first
+  path ||= Dir[File.join(launchicken_repo_dir, "*", "*.xcodeproj")].reject { |candidate| candidate.include?("/fastlane/") }.first
+  UI.user_error!("No .xcodeproj file was found in the repository.") if path.to_s.empty?
+  File.expand_path(path)
+end
+
+def launchicken_scheme(project_path)
+  configured = ENV["LAUNCHICKEN_IOS_SCHEME"]
+  return configured unless configured.to_s.empty?
+
+  basename = File.basename(project_path, ".xcodeproj")
+  list = sh("xcodebuild -list -json -project #{project_path.shellescape}")
+  return basename if list.include?(%Q("#{basename}"))
+
+  UI.user_error!("Set LAUNCHICKEN_IOS_SCHEME to the shared iOS scheme name.")
+end
+
+def launchicken_bundle_id(app_path)
+  plist = File.join(app_path, "Info.plist")
+  sh("/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' #{plist.shellescape}").strip
+end
+
+def launchicken_app_running?(device_name, pid)
+  listing = sh("xcrun simctl spawn #{device_name.shellescape} launchctl list | grep '^#{pid}[[:space:]]' || true")
+  !listing.strip.empty?
+end
+
+def launchicken_dump_crash_diagnostics(device_name, screen, output_dir)
+  UI.error("Collecting crash diagnostics for screen '#{screen[:name]}'...")
+  failure_shot = File.join(output_dir, "launchicken-#{screen[:name]}-failure.png")
+  sh("xcrun simctl io #{device_name.shellescape} screenshot #{failure_shot.shellescape} || true")
+  sh(%q(for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -n 2); do echo "===== crash report: $f"; head -c 6000 "$f"; echo; cp "$f" ) + output_dir.shellescape + %q( || true; done))
+end
+
+def launchicken_launch_screen(device_name, bundle_id, screen, output_dir)
+  sh("xcrun simctl terminate #{device_name.shellescape} #{bundle_id.shellescape} || true")
+  args = screen[:args].map(&:shellescape).join(" ")
+  launch_output = sh("xcrun simctl launch #{device_name.shellescape} #{bundle_id.shellescape} #{args}")
+  pid = launch_output[/:\s*(\d+)/, 1].to_s
+  UI.user_error!("simctl could not launch #{bundle_id} for screen '#{screen[:name]}'.") if pid.empty?
+
+  # Screenshotting a dead or still-launching app captures the iOS home screen instead of
+  # the app, so keep verifying the process for a few seconds before taking the picture.
+  8.times do
+    sleep(1)
+    next if launchicken_app_running?(device_name, pid)
+    launchicken_dump_crash_diagnostics(device_name, screen, output_dir)
+    UI.user_error!(
+      "The app exited before the '#{screen[:name]}' screenshot was taken. " \
+      "Make sure the app launches on the simulator and does not crash when " \
+      "passed the launch arguments: #{screen[:args].join(' ')}"
+    )
+  end
+end
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Capture a Launchicken iOS screenshot for every screen in launchicken/screenshots.yml."
+  lane :screenshots do
+    repo_dir = launchicken_repo_dir
+    plan = launchicken_plan
+    screens = launchicken_ios_screens(plan)
+    project_path = launchicken_project_path
+    scheme = launchicken_scheme(project_path)
+    output_dir = File.join(repo_dir, "fastlane", "screenshots")
+    derived_data = File.join(repo_dir, "DerivedData", "Launchicken")
+    device_name = launchicken_device_name(plan)
+
+    sh("mkdir -p #{output_dir.shellescape}")
+    sh("rm -rf #{derived_data.shellescape}")
+
+    destination = "platform=iOS Simulator,name=#{device_name},OS=latest"
+    sh(%Q(cd #{repo_dir.shellescape} && xcodebuild build -project #{project_path.shellescape} -scheme #{scheme.shellescape} -destination '#{destination}' -derivedDataPath #{derived_data.shellescape} CODE_SIGNING_ALLOWED=NO))
+
+    app_path = sh("find #{derived_data.shellescape}/Build/Products -name '*.app' -type d | head -n 1").strip
+    UI.user_error!("No .app was produced by xcodebuild.") if app_path.empty?
+    bundle_id = launchicken_bundle_id(app_path)
+
+    sh("xcrun simctl boot #{device_name.shellescape} || true") unless launchicken_booted?(device_name)
+    sh("xcrun simctl bootstatus #{device_name.shellescape} -b")
+    sh("xcrun simctl install #{device_name.shellescape} #{app_path.shellescape}")
+
+    UI.message("Launchicken will capture #{screens.length} screen(s): #{screens.map { |screen| screen[:name] }.join(', ')}")
+
+    screens.each do |screen|
+      launchicken_launch_screen(device_name, bundle_id, screen, output_dir)
+      sh("xcrun simctl io #{device_name.shellescape} screenshot #{File.join(output_dir, "launchicken-#{screen[:name]}.png").shellescape}")
+    end
+  end
+end
