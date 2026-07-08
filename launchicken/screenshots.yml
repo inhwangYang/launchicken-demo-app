@@ -1,0 +1,50 @@
+# Launchicken managed screenshot plan (v2).
+# Launchicken rewrites this file from the screen list configured in the dashboard.
+# Remove the "Launchicken managed screenshot plan" header line to manage this file manually.
+
+ios:
+  scheme: YourAppScheme
+  devices:
+    - iPhone 15 Pro Max
+    - iPhone 15
+  languages:
+    - en-US
+  screens:
+    - name: home
+      description: "오늘의 습관 목록과 달성률 카드가 보이는 메인 화면"
+      launch_arguments:
+        - --launchicken-screen=home
+    - name: stats
+      description: "주간 달성 차트와 습관별 기록이 보이는 통계 화면"
+      launch_arguments:
+        - --launchicken-screen=stats
+    - name: new-habit
+      description: "이모지와 색상을 고르며 새 습관을 만드는 화면"
+      launch_arguments:
+        - --launchicken-screen=new-habit
+    - name: settings
+      description: "알림과 동기화를 설정하는 화면"
+      launch_arguments:
+        - --launchicken-screen=settings
+
+android:
+  package: com.example.app
+  devices:
+    - Pixel_8
+  screens:
+    - name: home
+      description: "오늘의 습관 목록과 달성률 카드가 보이는 메인 화면"
+      intent_extra:
+        launchicken_screen: home
+    - name: stats
+      description: "주간 달성 차트와 습관별 기록이 보이는 통계 화면"
+      intent_extra:
+        launchicken_screen: stats
+    - name: new-habit
+      description: "이모지와 색상을 고르며 새 습관을 만드는 화면"
+      intent_extra:
+        launchicken_screen: new-habit
+    - name: settings
+      description: "알림과 동기화를 설정하는 화면"
+      intent_extra:
+        launchicken_screen: settings
