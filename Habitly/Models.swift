@@ -12,7 +12,20 @@ struct Habit: Identifiable {
 }
 
 final class HabitStore: ObservableObject {
-    @Published var habits: [Habit] = [
+    @Published var habits: [Habit]
+
+    /// 기본 초기화: 기존 동작과 완전히 동일한 데모 데이터를 사용합니다.
+    /// `seedForScreenshots`가 true이면 Launchicken 스크린샷 촬영을 위해
+    /// 화면이 비어 보이지 않도록 더 풍부한 더미 데이터를 채웁니다.
+    init(seedForScreenshots: Bool = false) {
+        if seedForScreenshots {
+            habits = HabitStore.screenshotSeedHabits
+        } else {
+            habits = HabitStore.defaultHabits
+        }
+    }
+
+    private static let defaultHabits: [Habit] = [
         Habit(emoji: "💧", name: "물 2L 마시기", color: .blue, streak: 12, doneToday: true,
               week: [true, true, false, true, true, true, true]),
         Habit(emoji: "🧘", name: "아침 스트레칭 10분", color: .orange, streak: 5, doneToday: true,
@@ -23,6 +36,23 @@ final class HabitStore: ObservableObject {
               week: [false, false, true, false, true, true, true]),
         Habit(emoji: "🌙", name: "12시 전에 잠들기", color: .indigo, streak: 8, doneToday: false,
               week: [true, true, true, false, true, true, false]),
+    ]
+
+    /// Launchicken 스크린샷 전용 더미 데이터. 앱스토어 스크린샷에 자연스럽게 보이도록
+    /// 다양한 습관과 연속 기록, 주간 달성 패턴을 포함합니다.
+    private static let screenshotSeedHabits: [Habit] = [
+        Habit(emoji: "💧", name: "물 2L 마시기", color: .blue, streak: 18, doneToday: true,
+              week: [true, true, true, true, true, true, true]),
+        Habit(emoji: "🧘", name: "아침 스트레칭 10분", color: .orange, streak: 9, doneToday: true,
+              week: [true, true, true, false, true, true, true]),
+        Habit(emoji: "📚", name: "책 20쪽 읽기", color: .purple, streak: 32, doneToday: true,
+              week: [true, true, true, true, true, true, true]),
+        Habit(emoji: "🏃", name: "5km 러닝", color: .green, streak: 6, doneToday: false,
+              week: [true, false, true, true, false, true, true]),
+        Habit(emoji: "🌙", name: "12시 전에 잠들기", color: .indigo, streak: 14, doneToday: true,
+              week: [true, true, true, true, false, true, true]),
+        Habit(emoji: "🥗", name: "채소 챙겨 먹기", color: .teal, streak: 4, doneToday: true,
+              week: [false, true, true, false, true, true, true]),
     ]
 
     var completedToday: Int { habits.filter(\.doneToday).count }
