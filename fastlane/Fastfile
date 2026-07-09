@@ -1,4 +1,4 @@
-# Launchicken managed Fastfile (scaffold v6).
+# Launchicken managed Fastfile (scaffold v7).
 # Launchicken keeps this file up to date automatically. Remove this header line to opt out.
 require "json"
 require "shellwords"
@@ -54,11 +54,18 @@ def launchicken_ios_screens(plan)
   ]
 end
 
+def launchicken_device_name_from_line(line)
+  # Lines look like "    iPad Pro 13-inch (M4) (UUID) (Shutdown)" - parentheses can be
+  # part of the device name, so anchor on the 36-char UDID instead of the first "(".
+  match = line.match(/^\s*(.+?) \([0-9A-Fa-f-]{36}\) \(/)
+  match ? match[1].strip : nil
+end
+
 def launchicken_first_available_iphone
   devices = sh("xcrun simctl list devices available")
   line = devices.lines.find { |candidate| candidate.include?("iPhone") && candidate.include?("(") }
   return nil unless line
-  line.split("(").first.strip
+  launchicken_device_name_from_line(line)
 end
 
 def launchicken_simulator_exists?(device_name)
@@ -118,7 +125,7 @@ def launchicken_ipad_device_name
   preferred = devices.lines.find { |line| line.include?("iPad Pro 13") && line.include?("(") }
   preferred ||= devices.lines.find { |line| line.include?("iPad") && line.include?("(") }
   return nil unless preferred
-  preferred.split("(").first.strip
+  launchicken_device_name_from_line(preferred)
 end
 
 def launchicken_prepare_device(device_name, app_path)
