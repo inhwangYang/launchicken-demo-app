@@ -1,4 +1,4 @@
-# Launchicken managed Fastfile (scaffold v5).
+# Launchicken managed Fastfile (scaffold v6).
 # Launchicken keeps this file up to date automatically. Remove this header line to opt out.
 require "json"
 require "shellwords"
@@ -105,6 +105,36 @@ def launchicken_bundle_id(app_path)
   sh("/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' #{plist.shellescape}").strip
 end
 
+def launchicken_supports_ipad?(app_path)
+  plist = File.join(app_path, "Info.plist")
+  families = sh("/usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily' #{plist.shellescape} || true")
+  families.lines.any? { |line| line.strip == "2" }
+end
+
+def launchicken_ipad_device_name
+  configured = ENV["LAUNCHICKEN_IPAD_DEVICE"].to_s
+  return configured if !configured.empty? && launchicken_simulator_exists?(configured)
+  devices = sh("xcrun simctl list devices available")
+  preferred = devices.lines.find { |line| line.include?("iPad Pro 13") && line.include?("(") }
+  preferred ||= devices.lines.find { |line| line.include?("iPad") && line.include?("(") }
+  return nil unless preferred
+  preferred.split("(").first.strip
+end
+
+def launchicken_prepare_device(device_name, app_path)
+  sh("xcrun simctl boot #{device_name.shellescape} || true") unless launchicken_booted?(device_name)
+  sh("xcrun simctl bootstatus #{device_name.shellescape} -b")
+  sh("xcrun simctl install #{device_name.shellescape} #{app_path.shellescape}")
+end
+
+def launchicken_capture_screens(device_name, bundle_id, screens, output_dir, suffix)
+  screens.each do |screen|
+    launchicken_launch_screen(device_name, bundle_id, screen, output_dir)
+    file_name = "launchicken-#{screen[:name]}#{suffix}.png"
+    sh("xcrun simctl io #{device_name.shellescape} screenshot #{File.join(output_dir, file_name).shellescape}")
+  end
+end
+
 def launchicken_app_running?(device_name, pid)
   listing = sh("xcrun simctl spawn #{device_name.shellescape} launchctl list | grep '^#{pid}[[:space:]]' || true")
   !listing.strip.empty?
@@ -162,15 +192,22 @@ platform :ios do
     UI.user_error!("No .app was produced by xcodebuild.") if app_path.empty?
     bundle_id = launchicken_bundle_id(app_path)
 
-    sh("xcrun simctl boot #{device_name.shellescape} || true") unless launchicken_booted?(device_name)
-    sh("xcrun simctl bootstatus #{device_name.shellescape} -b")
-    sh("xcrun simctl install #{device_name.shellescape} #{app_path.shellescape}")
-
     UI.message("Launchicken will capture #{screens.length} screen(s): #{screens.map { |screen| screen[:name] }.join(', ')}")
 
-    screens.each do |screen|
-      launchicken_launch_screen(device_name, bundle_id, screen, output_dir)
-      sh("xcrun simctl io #{device_name.shellescape} screenshot #{File.join(output_dir, "launchicken-#{screen[:name]}.png").shellescape}")
+    launchicken_prepare_device(device_name, app_path)
+    launchicken_capture_screens(device_name, bundle_id, screens, output_dir, "")
+
+    # Apps whose UIDeviceFamily includes iPad (2) also get iPad captures, which
+    # Launchicken turns into the App Store's required 13-inch iPad screenshots.
+    if launchicken_supports_ipad?(app_path)
+      ipad_device = launchicken_ipad_device_name
+      if ipad_device.to_s.empty?
+        UI.important("App supports iPad but no iPad simulator is available; skipping iPad capture.")
+      else
+        UI.message("App supports iPad - capturing on #{ipad_device} as well.")
+        launchicken_prepare_device(ipad_device, app_path)
+        launchicken_capture_screens(ipad_device, bundle_id, screens, output_dir, "~ipad")
+      end
     end
   end
 end
