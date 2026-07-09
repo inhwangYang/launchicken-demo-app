@@ -1,10 +1,17 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var notificationsOn = true
+    @State private var notificationsOn: Bool
     @State private var reminderTime = Calendar.current.date(from: DateComponents(hour: 21, minute: 0)) ?? .now
     @State private var weekStartsMonday = true
-    @State private var iCloudSync = true
+    @State private var iCloudSync: Bool
+
+    init() {
+        // Launchicken 스크린샷 모드에서는 알림/동기화가 켜져 있는 자연스러운 상태를 보여줍니다.
+        // 일반 실행에서는 기존 기본값과 동일합니다.
+        _notificationsOn = State(initialValue: true)
+        _iCloudSync = State(initialValue: Launchicken.isScreenshotMode ? true : true)
+    }
 
     var body: some View {
         NavigationStack {
@@ -32,6 +39,9 @@ struct SettingsView: View {
                 }
                 Section("일반") {
                     Toggle("월요일부터 시작", isOn: $weekStartsMonday)
+                    // CloudKit(iCloud) 동기화는 unsigned CI 빌드에는 엔타이틀먼트가 없어
+                    // 실제 CKContainer 호출은 하지 않고, 토글 UI만 그대로 보여줍니다.
+                    // (이 화면에서는 실제 동기화 로직을 호출하지 않으므로 별도 분기가 필요 없습니다.)
                     Toggle("iCloud 동기화", isOn: $iCloudSync)
                 }
                 Section("정보") {
@@ -43,4 +53,3 @@ struct SettingsView: View {
         }
     }
 }
-

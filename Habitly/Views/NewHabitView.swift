@@ -4,13 +4,27 @@ struct NewHabitView: View {
     @EnvironmentObject private var store: HabitStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
-    @State private var selectedEmoji = "✨"
-    @State private var selectedColor: Color = .teal
+    @State private var name: String
+    @State private var selectedEmoji: String
+    @State private var selectedColor: Color
     @State private var remindMe = true
 
     private let emojis = ["✨", "💪", "🥗", "💊", "🚶", "🎸", "🧹", "💰"]
     private let colors: [Color] = [.teal, .blue, .purple, .pink, .orange, .green]
+
+    init() {
+        // Launchicken 스크린샷 모드에서는 이모지/색상을 고르는 중인 것처럼 보이도록
+        // 예시 습관 이름과 선택된 이모지/색상을 미리 채워둡니다. 일반 실행에서는 빈 값 그대로입니다.
+        if Launchicken.isScreenshotMode {
+            _name = State(initialValue: "저녁 8시 이후 금식하기")
+            _selectedEmoji = State(initialValue: "🥗")
+            _selectedColor = State(initialValue: .green)
+        } else {
+            _name = State(initialValue: "")
+            _selectedEmoji = State(initialValue: "✨")
+            _selectedColor = State(initialValue: .teal)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -71,4 +85,3 @@ struct NewHabitView: View {
         }
     }
 }
-
