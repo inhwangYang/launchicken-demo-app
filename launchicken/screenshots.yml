@@ -11,9 +11,19 @@ ios:
     - en-US
   screens:
     - name: home
+      description: "오늘의 습관 목록과 달성률 카드가 보이는 메인 화면"
       launch_arguments:
         - --launchicken-screen=home
+    - name: stats
+      description: "주간 달성 차트와 습관별 기록이 보이는 통계 화면"
+      launch_arguments:
+        - --launchicken-screen=stats
+    - name: new-habit
+      description: "이모지와 색상을 고르며 새 습관을 만드는 화면"
+      launch_arguments:
+        - --launchicken-screen=new-habit
     - name: settings
+      description: "알림과 동기화를 설정하는 화면"
       launch_arguments:
         - --launchicken-screen=settings
 
@@ -23,8 +33,18 @@ android:
     - Pixel_8
   screens:
     - name: home
+      description: "오늘의 습관 목록과 달성률 카드가 보이는 메인 화면"
       intent_extra:
         launchicken_screen: home
+    - name: stats
+      description: "주간 달성 차트와 습관별 기록이 보이는 통계 화면"
+      intent_extra:
+        launchicken_screen: stats
+    - name: new-habit
+      description: "이모지와 색상을 고르며 새 습관을 만드는 화면"
+      intent_extra:
+        launchicken_screen: new-habit
     - name: settings
+      description: "알림과 동기화를 설정하는 화면"
       intent_extra:
         launchicken_screen: settings
